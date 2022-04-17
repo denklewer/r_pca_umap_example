@@ -1,0 +1,93 @@
+```{r}
+library(dplyr)
+library(Seurat)
+library(patchwork)
+
+```
+```{r}
+library(ggplot2)
+
+```
+```{r}
+# Load the PBMC dataset
+hyp.data <- Read10X("data\\GSM3330882_GW10-Hy_")
+dim(hyp.data)
+
+```
+Create Seurat object
+
+```{r}
+hyp.seurat <- CreateSeuratObject(hyp.data, min.cells = 10, min.features = 10)
+hyp.seurat
+```
+Visualize
+
+```{r}
+hyp.seurat[["percent.mt"]] <- PercentageFeatureSet(hyp.seurat, pattern = "^MT-")
+
+FeatureScatter(hyp.seurat, "nCount_RNA", "nFeature_RNA") + scale_x_log10() + scale_y_log10()
+FeatureScatter(hyp.seurat, "nCount_RNA", "percent.mt") + scale_x_log10() 
+FeatureScatter(hyp.seurat, "nFeature_RNA",  "percent.mt") + scale_x_log10()
+```
+```{r}
+hyp.seurat <- subset(hyp.seurat, subset = nFeature_RNA > 1000 & percent.mt < 5)
+dim(hyp.seurat)
+```
+```{r}
+# Visualize QC metrics as a violin plot
+VlnPlot(hyp.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+Normalize and scale the data
+```{r}
+hyp.seurat <- NormalizeData(hyp.seurat, normalization.method = "LogNormalize", scale.factor = 10000, verbose = FALSE)
+all.genes <- rownames(hyp.seurat)
+hyp.seurat <- ScaleData(hyp.seurat, features = all.genes)
+
+```
+Identification of highly variable features
+```{r}
+hyp.seurat <- FindVariableFeatures(hyp.seurat, selection.method = "vst", nfeatures = 2000)
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(hyp.seurat), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(hyp.seurat)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+ plot2
+
+```
+PCA dimensionality reduction
+```{r}
+hyp.seurat <- RunPCA(hyp.seurat, features = VariableFeatures(object = hyp.seurat), verbose = FALSE)
+ElbowPlot(hyp.seurat, ndims = 50)
+```
+# 6. Calculate UMAP after PCA 
+```{r}
+
+hyp.seurat <- RunUMAP(hyp.seurat, dims = 1:30, verbose = FALSE)
+DimPlot(hyp.seurat, reduction = "umap") + NoLegend()
+```
+Clusters
+```{r}
+hyp.seurat <- FindNeighbors(hyp.seurat, dims = 1:30, verbose = FALSE)
+hyp.seurat <- FindClusters(hyp.seurat, resolution = 0.6, verbose = TRUE)
+DimPlot(hyp.seurat, reduction = "umap", label=TRUE) + NoLegend()
+```
+Visualizing gene expression in clusters
+```{r}
+FeaturePlot(hyp.seurat, features = c("VIM", "ASCL1", "SLC17A8"), reduction = "umap", ncol = 3)
+```
+Run DGE tests
+
+```{r}
+allMarkers <- FindAllMarkers(hyp.seurat, 
+                             only.pos = TRUE, 
+                             min.pct = 0.25, 
+                             logfc.threshold = 0.25,
+                             verbose = FALSE)
+bestMarkers <- allMarkers %>% group_by(cluster) %>%  slice_max(n = 1, order_by = avg_log2FC) %>% pull(gene)
+
+print(bestMarkers)
+```
+
+

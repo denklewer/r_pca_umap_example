@@ -1,0 +1,102 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+```{r}
+install.packages('Seurat')
+install.packages('dplyr')
+
+```
+
+```{r}
+Sys.setlocale("LC_CTYPE", "US")
+```
+
+
+```{r}
+library(dplyr)    # alternatively, this also loads %>%
+library(Seurat)
+```
+
+
+
+
+Read data
+
+```{r}
+df <- read.table("D:\\Projects\\MHC_predictor\\experiments\\length_dependent_hmm\\experiment_results\\alleles_with_groups\\0_run-9-10-25-st-viterbi-alg-5-min_iters_model-HLA_A_01_01+HLA_A_03_01-0\\train_embedding.csv",
+                 header= TRUE,
+                 sep = ";")
+```
+
+
+Delete not needed columns
+
+
+```{r}
+saved_alleles <- df$allele
+saved_peptides <- df$peptide
+drops <- c("X", "peptide", "allele")
+df <- df[ , !(names(df) %in% drops)]
+dim(df)
+```
+
+```{r}
+head(df)
+
+```
+```{r}
+transposed <- data.frame(t(df))
+```
+
+
+Seurat usage
+
+```{r}
+basis_obj <- CreateSeuratObject(counts = transposed, project = "Test")
+
+basis_obj@assays$RNA@var.features <- rownames(basis_obj@assays$RNA@counts)
+basis_obj@assays$RNA@scale.data <- as.matrix(transposed)
+# PCA
+basis_obj <- RunPCA(object = basis_obj, verbose=FALSE, npcs = 20)
+```
+```{r}
+
+basis_obj <- basis_obj %>% 
+    RunUMAP(reduction = "pca", dims = 1:20, n.neighbors=50, metric="euclidean", min.dist=0.1 ) %>% 
+    FindNeighbors(reduction = "pca", dims = 1:20)
+```
+```{r}
+basis_obj <- basis_obj %>% 
+  FindClusters(resolution = 0.5) %>% 
+  identity()
+```
+
+```{r}
+clusters <- as.character(basis_obj@meta.data$seurat_clusters)
+#clusters <- basis_obj@meta.data$seurat_clusters
+#temp <- as.character(basis_obj@meta.data[,'seurat_clusters'])
+
+umap_embedding = basis_obj@reductions$umap
+umap_df =  data.frame(umap_embedding@cell.embeddings)
+
+# fill clusters and alleles
+umap_df$cluster <- clusters
+umap_df$allele <- saved_alleles
+umap_df$peptide <- saved_peptides
+head(umap_df)
+```
+```{r}
+ggplot(umap_df, aes(x=UMAP_1, y=UMAP_2, color=allele) ) + geom_point(size=0.5)
+```
+
+
+```{r}
+ggplot(umap_df, aes(x=UMAP_1, y=UMAP_2, color=cluster) ) + geom_point(size=1)
+```
+
+
